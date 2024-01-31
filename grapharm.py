@@ -41,19 +41,22 @@ class GraphARM(nn.Module):
         '''
         p = datapoint.clone().to(self.device)
         node_order = []
+        sigma_t_dist_list = []
+        
         for i in range(p.x.shape[0]):
             # use diffusion ordering network to get probabilities
             sigma_t_dist = self.diffusion_ordering_network(p, node_order)
             # sample (only unmasked nodes) from categorical distribution to get node to mask
             unmasked = ~self.masker.is_masked(p)
+            sigma_t_dist_list.append(sigma_t_dist.flatten())
             sigma_t = torch.distributions.Categorical(probs=sigma_t_dist[unmasked].flatten()).sample()
-            
+
             # get node index
             sigma_t = torch.where(unmasked.flatten())[0][sigma_t.long()]
             node_order.append(sigma_t)
             # mask node
             p = self.masker.mask_node(p, sigma_t)
-        return node_order
+        return node_order, sigma_t_dist_list
 
     def uniform_node_decay_ordering(self, datapoint):
         '''
@@ -71,8 +74,9 @@ class GraphARM(nn.Module):
         original_data = graph.clone().to(self.device)
         diffusion_trajectories = []
         for m in range(M):
-            node_order = self.node_decay_ordering(graph)
-            
+            node_order, sigma_t_dist = self.node_decay_ordering(graph)
+            node_order_invariate = node_order
+
             # create diffusion trajectory
             diffusion_trajectory = [original_data]
             masked_data = graph.clone()
@@ -87,7 +91,7 @@ class GraphARM(nn.Module):
                     masked_data = self.masker.remove_node(masked_data, node)
                     node_order = [n-1 if n > node else n for n in node_order] # update node order to account for removed node
 
-            diffusion_trajectories.append(diffusion_trajectory)
+            diffusion_trajectories.append([diffusion_trajectory, node_order_invariate, sigma_t_dist])
         return diffusion_trajectories
 
     def preprocess(self, graph):
@@ -121,17 +125,17 @@ class GraphARM(nn.Module):
                 graph = self.preprocess(graph)
                 diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
                 # predictions & loss
-                for diffusion_trajectory in diffusion_trajectories:
+                for diffusion_trajectory, node_order, sigma_t_dist in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
-                    node_order = self.node_decay_ordering(G_0)
+
                     for t in range(len(node_order)):
-                        for k in range(t+1):# until t
+                        for k in range(len(node_order) - t - 1):# until t
                             G_pred = diffusion_trajectory[t+1].clone()                              
 
                             # predict node and edge type distributions
                             node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
 
-                            w_k = self.diffusion_ordering_network(G_0, node_order[t+1:])[node_order[k]]
+                            w_k = sigma_t_dist[t][node_order[k]]
                             w_k = w_k.detach()
                             wandb.log({"target_node_ordering_prob": w_k.item()})
                             # calculate loss
@@ -149,6 +153,8 @@ class GraphARM(nn.Module):
         # log loss
         wandb.log({"loss": acc_loss})
 
+        self.denoising_optimizer.zero_grad()
+        self.ordering_optimizer.zero_grad()
         
         ## validation batch (optimizing diffusion ordering network)
         self.denoising_network.eval()
@@ -162,11 +168,10 @@ class GraphARM(nn.Module):
                 graph = self.preprocess(graph)
                 diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
                 # predictions & loss
-                for diffusion_trajectory in diffusion_trajectories:
+                for diffusion_trajectory, node_order, sigma_t_dist_unmasked  in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
-                    node_order = self.node_decay_ordering(G_0)
                     for t in range(len(node_order)):
-                        for k in range(t+1):
+                        for k in range(len(node_order) - t - 1):
                             G_pred = diffusion_trajectory[t+1].clone()                              
 
                             # predict node and edge type distributions
@@ -175,7 +180,7 @@ class GraphARM(nn.Module):
                             node_type_probs = node_type_probs.detach()
                             edge_type_probs = edge_type_probs.detach()
 
-                            w_k = self.diffusion_ordering_network(G_0, node_order[t+1:])[node_order[k]]
+                            w_k = sigma_t_dist_unmasked[t][node_order[k]]
                             wandb.log({"target_node_ordering_prob": w_k.item()})
                             # calculate loss
                             reward = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M)

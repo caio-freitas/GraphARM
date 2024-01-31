@@ -105,11 +105,10 @@ class DiffusionOrderingNetwork(nn.Module):
 
         h = self.embedding(G.x.squeeze().long().to(self.device))
 
-        h = self.gat(h, G.edge_index.long().to(self.device), G.edge_attr.long().to(self.device))
-
         # # Positional encoding
         for t in range(len(node_order)):
             h[node_order[t], :] += self.pe[t, :].to(self.device)
+        h = self.gat(h, G.edge_index.long().to(self.device), G.edge_attr.long().to(self.device))
 
         if unmasked.numel() > 0:
             h_unmasked = h[unmasked, :]
