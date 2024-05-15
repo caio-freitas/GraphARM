@@ -5,8 +5,8 @@ import wandb
 import torch.nn as nn
 import logging
 
-from benchmarks.GraphARM.models import DiffusionOrderingNetwork, DenoisingNetwork
-from benchmarks.GraphARM.utils import NodeMasking
+from models import DiffusionOrderingNetwork, DenoisingNetwork
+from utils import NodeMasking
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -268,7 +268,7 @@ class GraphARM(nn.Module):
         torch.save(self.diffusion_ordering_network.state_dict(), diffusion_ordering_network_path)
 
     def load_model(self,
-                   denoising_network_path="denoising_network_overfit.pt",
-                   diffusion_ordering_network_path="diffusion_ordering_network_overfit.pt"):
+                   denoising_network_path="denoising_network.pt",
+                   diffusion_ordering_network_path="diffusion_ordering_network.pt"):
         self.denoising_network.load_state_dict(torch.load(denoising_network_path, map_location=self.device ))
         self.diffusion_ordering_network.load_state_dict(torch.load(diffusion_ordering_network_path, map_location=self.device))

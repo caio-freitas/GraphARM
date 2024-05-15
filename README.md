@@ -6,5 +6,5 @@ Unofficial implementation of the [paper from Lingkai Kong, Jiaming Cui, Haotian 
 
 To install the dependencies, run 
 ```
-$ mamba env create -f conda_environment.yaml
+pip install -r requirements.txt
 ```
