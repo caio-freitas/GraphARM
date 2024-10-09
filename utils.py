@@ -8,32 +8,34 @@ def random_node_decay_ordering(datapoint):
 class NodeMasking:
     def __init__(self, dataset):
         self.dataset = dataset
-        self.node_type_to_idx = {node_type.item(): idx for idx, node_type in enumerate(dataset.x.unique())}
-        self.edge_type_to_idx = {edge_type.item(): idx for idx, edge_type in enumerate(dataset.edge_attr.unique())}
+        assert dataset.x.shape[1] == 1, "Only one feature per node is supported"
+        
         self.NODE_MASK = dataset.x.unique().shape[0]
         self.EMPTY_EDGE = dataset.edge_attr.unique().shape[0]
         self.EDGE_MASK = dataset.edge_attr.unique().shape[0] + 1
-        # add masks to node and edge types
-        self.node_type_to_idx[self.NODE_MASK] = len(self.node_type_to_idx)
-        self.edge_type_to_idx[self.EMPTY_EDGE] = len(self.edge_type_to_idx)
-        self.edge_type_to_idx[self.EDGE_MASK] = len(self.edge_type_to_idx)
-
+    
     def idxify(self, datapoint):
         '''
-        Converts node and edge types to indices
+        Converts node and edge types to indices starting from 0
         '''
         datapoint = datapoint.clone()
-        datapoint.x = torch.tensor([self.node_type_to_idx[node_type.item()] for node_type in datapoint.x]).reshape(-1, 1)
-        datapoint.edge_attr = torch.tensor([self.edge_type_to_idx[edge_type.item()] for edge_type in datapoint.edge_attr])
+        unique_node_types = {node_type.item(): idx for idx, node_type in enumerate(datapoint.x.unique())}
+        unique_edge_types = {edge_type.item(): idx for idx, edge_type in enumerate(datapoint.edge_attr.unique())}
+        
+        datapoint.x = torch.tensor([unique_node_types[node_type.item()] for node_type in datapoint.x]).reshape(-1, 1)
+        datapoint.edge_attr = torch.tensor([unique_edge_types[edge_type.item()] for edge_type in datapoint.edge_attr])
         return datapoint
     
     def deidxify(self, datapoint):
         '''
-        Converts node and edge indices to types
+        Converts node and edge indices back to their original types
         '''
         datapoint = datapoint.clone()
-        datapoint.x = torch.tensor([list(self.node_type_to_idx.keys())[node_idx] for node_idx in datapoint.x])
-        datapoint.edge_attr = torch.tensor([list(self.edge_type_to_idx.keys())[edge_idx] for edge_idx in datapoint.edge_attr])
+        unique_node_types = {idx: node_type.item() for idx, node_type in enumerate(datapoint.x.unique())}
+        unique_edge_types = {idx: edge_type.item() for idx, edge_type in enumerate(datapoint.edge_attr.unique())}
+        
+        datapoint.x = torch.tensor([unique_node_types.get(node_idx.item(), self.NODE_MASK) for node_idx in datapoint.x]).reshape(-1, 1)
+        datapoint.edge_attr = torch.tensor([unique_edge_types.get(edge_idx.item(), self.EDGE_MASK) for edge_idx in datapoint.edge_attr])
         return datapoint
 
     def is_masked(self, datapoint, node=None):

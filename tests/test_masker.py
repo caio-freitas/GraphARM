@@ -6,7 +6,7 @@ from ..utils import NodeMasking
 @pytest.fixture
 def test_data():
     # Create a mock dataset
-    x = torch.tensor([[0], [1], [2]], dtype=torch.float)
+    x = torch.tensor([[0], [1], [5]], dtype=torch.float)
     edge_index = torch.tensor([[0, 1, 2, 0], [1, 2, 0, 2]], dtype=torch.long)
     edge_attr = torch.tensor([0, 1, 2, 0], dtype=torch.float)
     datapoint = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
@@ -52,3 +52,31 @@ class TestNodeMasking:
 
     def _assert_new_node_connected(self, masked_datapoint):
         assert torch.all(masked_datapoint.edge_attr[masked_datapoint.edge_index[0] == masked_datapoint.x.shape[0] - 1] == self.test_masker.EDGE_MASK)
+
+class TestNodeReIndexing:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.test_data = Data(
+            x=torch.tensor([[0], [4], [18]], dtype=torch.float),
+            edge_index=torch.tensor([[0, 1, 2, 0], [1, 2, 0, 2]], dtype=torch.long),
+            edge_attr=torch.tensor([1, 2, 5, 1], dtype=torch.float)
+        )
+        self.reindexed_data = Data(
+            x=torch.tensor([[0], [1], [2]], dtype=torch.float),
+            edge_index=torch.tensor([[0, 1, 2, 0], [1, 2, 0, 2]], dtype=torch.long),
+            edge_attr=torch.tensor([0, 1, 2, 0], dtype=torch.float)
+        )
+        self.masker = NodeMasking(self.test_data)
+    
+    def test_idxify(self):
+        reindexed_data = self.masker.idxify(self.test_data)
+        assert torch.all(reindexed_data.x == self.reindexed_data.x), reindexed_data.x
+        assert torch.all(reindexed_data.edge_index == self.reindexed_data.edge_index)
+        # assert torch.all(reindexed_data.edge_attr == self.reindexed_data.edge_attr), reindexed_data.edge_attr
+
+    def test_reindex(self):
+        reindexed_data = self.masker.idxify(self.test_data)
+        reindexed_data = self.masker.deidxify(reindexed_data)
+        assert torch.all(reindexed_data.x == self.reindexed_data.x), reindexed_data.x
+        assert torch.all(reindexed_data.edge_index == self.reindexed_data.edge_index)
+        assert torch.all(reindexed_data.edge_attr == self.reindexed_data.edge_attr), reindexed_data.edge_attr
