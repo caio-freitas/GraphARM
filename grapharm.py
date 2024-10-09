@@ -144,7 +144,7 @@ class GraphARM(nn.Module):
 
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
-                            loss.backward()
+                            loss.backward(retain_graph=True)
                             pbar.set_description(f"Loss: {acc_loss:.4f}")
         
         # update parameters using accumulated gradients
@@ -187,7 +187,7 @@ class GraphARM(nn.Module):
                             wandb.log({"vlb": reward.item()})
                             acc_reward -= reward.item()
                             # backprop (accumulated gradients)
-                            reward.backward()
+                            reward.backward(retain_graph=True)
                             pbar.set_description(f"Reward: {acc_reward:.4f}")
 
         

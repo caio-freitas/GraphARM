@@ -122,8 +122,8 @@ class NodeMasking:
     def demask_node(self, graph, selected_node, node_type, connections_types):
         '''
         Demasking node mechanism
-        1. Unmasked node (x = node_type)
-        2. Connected to all other nodes in graph by unmasked edges (edge_attr = connections_types)
+        1. Unmasked node (graph.x = node_type)
+        2. Connected to all other nodes in graph by unmasked edges (graph.edge_attr <= connections_types)
         '''
         # demask node
         graph = graph.clone()
