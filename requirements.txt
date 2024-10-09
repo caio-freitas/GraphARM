@@ -1,4 +1,3 @@
 torch
 torch-geometric
-pytorch3d
 pytest
