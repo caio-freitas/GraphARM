@@ -1,5 +1,6 @@
 import torch
 from torch_geometric.utils import to_dense_adj
+from torch_geometric.data import Data
 
 def random_node_decay_ordering(datapoint):
     # create random list of nodes
@@ -158,18 +159,20 @@ class NodeMasking:
         fully_connected.edge_index = torch.nonzero(adjacency_matrix).T
         return fully_connected
     
-    def generate_fully_masked(self, like):
+    def generate_fully_masked(self, n_nodes):
         '''
         Generates a fully masked graph like the one provided
         '''
         
-        n_nodes = like.x.shape[0]
-
-        fully_masked = like.clone()
-        fully_masked.x = torch.ones(n_nodes, 1, dtype=torch.int32) * self.NODE_MASK
+        fully_masked = Data(
+            x=torch.zeros((n_nodes)),
+            edge_index=torch.tensor([(i, j) for i in range(n_nodes) for j in range(n_nodes)], dtype=torch.int64),
+            edge_attr=torch.zeros(n_nodes**2),
+        )
         fully_masked = self.fully_connect(fully_masked, keep_original_edges=False)
+        fully_masked.x = torch.ones(n_nodes, 1, dtype=torch.int32) * self.NODE_MASK
+        fully_masked.edge_attr = torch.ones(n_nodes**2, dtype=torch.int32) * self.EDGE_MASK
         return fully_masked
-    
 
     def get_denoised_nodes(self, graph):
         '''
