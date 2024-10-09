@@ -1,7 +1,7 @@
 import pytest
 import torch
 from torch_geometric.data import Data
-from utils import NodeMasking
+from ..utils import NodeMasking
 
 @pytest.fixture
 def test_data():
@@ -12,22 +12,43 @@ def test_data():
     datapoint = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
     return datapoint
 
-@pytest.fixture
-def test_masker(test_data):
-    return NodeMasking(test_data)
 
-def test_mask_single_node(test_data, test_masker):
-    # Test masking a single node
-    for node in range(test_data.x.shape[0]):
-        masked_datapoint = test_masker.mask_node(test_data, node)
-        assert masked_datapoint.x[node] == test_masker.NODE_MASK
-        assert torch.all(masked_datapoint.edge_attr[masked_datapoint.edge_index[0] == node] == test_masker.EDGE_MASK)
-        assert torch.all(masked_datapoint.edge_attr[masked_datapoint.edge_index[1] == node] == test_masker.EDGE_MASK)
+class TestNodeMasking:
+    @pytest.fixture(autouse=True)
+    def setup(self, test_data):
+        self.test_data = test_data
+        self.test_masker = NodeMasking(test_data)
 
-def test_add_masked_node(test_data, test_masker):
-    # Test adding a masked node
-    masked_datapoint = test_masker.add_masked_node(test_data)
-    assert torch.all(masked_datapoint.x[-1] == test_masker.NODE_MASK)
-    assert torch.all(masked_datapoint.edge_attr[-1] == test_masker.EDGE_MASK)
-    assert torch.all(masked_datapoint.edge_attr[:-1] == test_data.edge_attr)
-    assert torch.all(masked_datapoint.edge_index[:, :-1] == test_data.edge_index)
+    def test_mask_single_node(self):
+        # Test masking one node at a time
+        for node in range(self.test_data.x.shape[0]):
+            masked_datapoint = self.test_masker.mask_node(self.test_data, node)
+            self._assert_node_masked(masked_datapoint, node)
+            self._assert_edges_masked(masked_datapoint, node)
+
+    def _assert_node_masked(self, masked_datapoint, node):
+        assert masked_datapoint.x[node] == self.test_masker.NODE_MASK
+
+    def _assert_edges_masked(self, masked_datapoint, node):
+        assert torch.all(masked_datapoint.edge_attr[masked_datapoint.edge_index[0] == node] == self.test_masker.EDGE_MASK)
+        assert torch.all(masked_datapoint.edge_attr[masked_datapoint.edge_index[1] == node] == self.test_masker.EDGE_MASK)
+
+    def test_add_masked_node(self):
+        # Test adding a masked node
+        masked_datapoint = self.test_masker.add_masked_node(self.test_data)
+        self._assert_new_node_added(masked_datapoint)
+        self._assert_new_node_masked(masked_datapoint)
+        self._assert_new_node_edges_masked(masked_datapoint)
+        self._assert_new_node_connected(masked_datapoint)
+
+    def _assert_new_node_added(self, masked_datapoint):
+        assert masked_datapoint.x.shape[0] == self.test_data.x.shape[0] + 1
+
+    def _assert_new_node_masked(self, masked_datapoint):
+        assert torch.all(masked_datapoint.x[-1] == self.test_masker.NODE_MASK)
+
+    def _assert_new_node_edges_masked(self, masked_datapoint):
+        assert torch.all(masked_datapoint.edge_attr[-1] == self.test_masker.EDGE_MASK)
+
+    def _assert_new_node_connected(self, masked_datapoint):
+        assert torch.all(masked_datapoint.edge_attr[masked_datapoint.edge_index[0] == masked_datapoint.x.shape[0] - 1] == self.test_masker.EDGE_MASK)

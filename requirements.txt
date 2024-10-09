@@ -1,4 +1,4 @@
 torch==2.0.0
 torch-geometric
 pytorch3d==0.3.0
-pytest==4.6.9
+pytest
