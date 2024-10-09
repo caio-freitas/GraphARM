@@ -7,7 +7,7 @@ on:
       - main
   pull_request:
     branches:
-      - main
+      - '**'  # Runs on all branches
 
 jobs:
   test:
