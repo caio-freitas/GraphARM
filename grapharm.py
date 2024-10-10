@@ -252,14 +252,7 @@ class GraphARM(nn.Module):
             elif sampling_method == "argmax":
                 new_connections = torch.argmax(edge_type_probs.squeeze(), dim=-1)
             # no need to filter connection to previously denoised nodes, assuming only one new node is added at a time
-
-            # lookup dictionary to get node type
-            node_type = torch.tensor(next(key for key, value in self.masker.node_type_to_idx.items() if value == node_type.item()), dtype=torch.int32).to(self.device)
-
-            # lookup dictionary to get edge type
-            if new_connections.any():
-                new_connections = torch.tensor([list(self.masker.edge_type_to_idx.keys())[list(self.masker.edge_type_to_idx.values()).index(edge_idx)] for edge_idx in new_connections]).to(self.device)
-
+           
         return node_type, new_connections
 
 
