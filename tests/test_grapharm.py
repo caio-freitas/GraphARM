@@ -48,5 +48,5 @@ class TestGraphARM:
         predicted_node_type, predicted_connection_types = self.grapharm.predict_new_node(self.empty_graph)
         # Assert that predicted node type is a number in the range of node types
         assert predicted_node_type in range(self.test_data.x.unique().shape[0])
-        # Assert that predicted connection types are numbers in the range of edge types
-        assert all([connection_type in range(self.test_data.edge_attr.unique().shape[0]) for connection_type in predicted_connection_types])
+        # Assert that predicted connection types are numbers in the range of edge types, +1 for the empty connection type
+        assert all([connection_type in range(self.test_data.edge_attr.unique().shape[0]+1) for connection_type in predicted_connection_types])
