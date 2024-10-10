@@ -76,9 +76,11 @@ class NodeMasking:
         Adds a masked node to the graph
         '''
         datapoint = datapoint.clone()
+        n_nodes = datapoint.x.shape[0]
         datapoint.x = torch.cat([datapoint.x.reshape(-1,1), torch.tensor([[self.NODE_MASK]])], dim=0)
-        datapoint.edge_attr = torch.cat([datapoint.edge_attr.reshape(-1,1), torch.tensor([self.EDGE_MASK]).repeat(datapoint.x.shape[0]-1, 1)], dim=0)
-        datapoint.edge_index = torch.cat([datapoint.edge_index, torch.tensor([(node, datapoint.x.shape[0]-1) for node in range(datapoint.x.shape[0]-1)]).T], dim=1)
+        datapoint.edge_attr = torch.cat([datapoint.edge_attr.reshape(-1,1), torch.tensor([self.EDGE_MASK]).repeat(n_nodes+1, 1)], dim=0)
+        new_edges = torch.tensor([(node, n_nodes) for node in range(n_nodes+1)], dtype=torch.long).transpose(1,0)
+        datapoint.edge_index = torch.cat([datapoint.edge_index, new_edges], dim=1)
         return datapoint
 
 
@@ -165,13 +167,10 @@ class NodeMasking:
         '''
         
         fully_masked = Data(
-            x=torch.zeros((n_nodes)),
-            edge_index=torch.tensor([(i, j) for i in range(n_nodes) for j in range(n_nodes)], dtype=torch.int64),
-            edge_attr=torch.zeros(n_nodes**2),
+            x=torch.ones((n_nodes))*self.NODE_MASK,
+            edge_index=torch.tensor([(i, j) for i in range(n_nodes) for j in range(n_nodes)], dtype=torch.int64).transpose(0,1),
+            edge_attr=torch.ones(n_nodes**2)*self.EDGE_MASK,
         )
-        fully_masked = self.fully_connect(fully_masked, keep_original_edges=False)
-        fully_masked.x = torch.ones(n_nodes, 1, dtype=torch.int32) * self.NODE_MASK
-        fully_masked.edge_attr = torch.ones(n_nodes**2, dtype=torch.int32) * self.EDGE_MASK
         return fully_masked
 
     def get_denoised_nodes(self, graph):
