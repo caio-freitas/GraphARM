@@ -1,3 +1,4 @@
 torch
 torch-geometric
 pytest
+wandb
