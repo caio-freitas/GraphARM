@@ -5,11 +5,12 @@ Test suite for GraphARM class
                             correctly for a single-node masked graph
 
 '''
-
+import pytest
 import torch
 import torch_geometric
 
 from ..grapharm import GraphARM
+from ..models import DiffusionOrderingNetwork, DenoisingNetwork
 from ..utils import NodeMasking
 
 @pytest.fixture
@@ -26,10 +27,26 @@ class TestGraphARM:
     def setup(self, test_data):
         self.test_data = test_data
         self.test_masker = NodeMasking(test_data)
-        self.grapharm = GraphARM(dataset=test_data, denoising_network=None, diffusion_ordering_network=None, device=torch.device('cpu'))
+        denoising_network = DenoisingNetwork(
+            node_feature_dim=1,
+            edge_feature_dim=1,
+            num_node_types=self.test_data.x.unique().shape[0],
+            num_edge_types=self.test_data.edge_attr.unique().shape[0],
+            device=torch.device('cpu')
+            )
+        diffusion_ordering_network = DiffusionOrderingNetwork(
+            node_feature_dim=1,
+            num_edge_types=self.test_data.edge_attr.unique().shape[0],
+            num_node_types=self.test_data.x.unique().shape[0],
+            device=torch.device('cpu')
+            )
+        self.grapharm = GraphARM(dataset=test_data, denoising_network=denoising_network, diffusion_ordering_network=diffusion_ordering_network, device=torch.device('cpu'))
         self.empty_graph = self.test_masker.generate_fully_masked(n_nodes=1)
 
     def test_predict_single_node(self):
         # Test if GraphARM can predict a single node correctly for a single-node masked graph
-        predicted_node_type, predicted_connection_types = self.grapharm.predict(self.empty_graph)
-        assert predicted_node_type.shape[1] == self.empty_graph.x.shape[1]
+        predicted_node_type, predicted_connection_types = self.grapharm.predict_new_node(self.empty_graph)
+        # Assert that predicted node type is a number in the range of node types
+        assert predicted_node_type in range(self.test_data.x.unique().shape[0])
+        # Assert that predicted connection types are numbers in the range of edge types
+        assert all([connection_type in range(self.test_data.edge_attr.unique().shape[0]) for connection_type in predicted_connection_types])

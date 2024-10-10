@@ -5,8 +5,8 @@ import wandb
 import torch.nn as nn
 import logging
 
-from models import DiffusionOrderingNetwork, DenoisingNetwork
-from utils import NodeMasking
+from .models import DiffusionOrderingNetwork, DenoisingNetwork
+from .utils import NodeMasking
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
