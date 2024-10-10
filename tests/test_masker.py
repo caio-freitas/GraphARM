@@ -2,13 +2,13 @@
 Test Suite for the NodeMasking class
 
 Tests:
-    - Test masking a single node
-    - Test adding a masked node
-    - Test idxify
-    - Test deidxify
-    - Test is_masked
-    - Test remove_node
-    - Test generate_fully_masked
+    - masking a single node
+    - adding a masked node
+    - idxify
+    - deidxify
+    - is_masked
+    - remove_node
+    - generate_fully_masked
 '''
 
 
