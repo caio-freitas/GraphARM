@@ -167,7 +167,7 @@ class NodeMasking:
         '''
         
         fully_masked = Data(
-            x=torch.ones((n_nodes))*self.NODE_MASK,
+            x=torch.ones((n_nodes, 1))*self.NODE_MASK,
             edge_index=torch.tensor([(i, j) for i in range(n_nodes) for j in range(n_nodes)], dtype=torch.int64).transpose(0,1),
             edge_attr=torch.ones(n_nodes**2)*self.EDGE_MASK,
         )

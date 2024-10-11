@@ -99,8 +99,6 @@ class GraphARM(nn.Module):
         Preprocesses graph to be used by the denoising network.
         '''
         graph = graph.clone()
-        # node and edge types to idx
-        graph = self.masker.idxify(graph)
         graph = self.masker.fully_connect(graph)
         return graph
 
@@ -235,8 +233,6 @@ class GraphARM(nn.Module):
         with torch.no_grad():
             if preprocess:
                 graph = self.preprocess(graph)
-            # add masked node to graph
-            graph = self.masker.add_masked_node(graph)
             # predict node type
             node_type_probs, edge_type_probs = self.denoising_network(graph.x, graph.edge_index, graph.edge_attr)
             
