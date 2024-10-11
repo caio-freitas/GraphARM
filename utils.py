@@ -111,15 +111,13 @@ class NodeMasking:
         '''
         graph = graph.clone()
         # reorder edge_attr
-        edge_attr = torch.zeros(graph.x.shape[0]**2)
+        edge_attr = torch.full((graph.x.shape[0], graph.x.shape[0]), self.EMPTY_EDGE, dtype=torch.long)
         for edge_attr_value, edge_index in zip(graph.edge_attr, graph.edge_index.T):
-            edge_attr[edge_index[0] * graph.x.shape[0] + edge_index[1]] = edge_attr_value
-        graph.edge_attr = edge_attr.long()
+            edge_attr[edge_index[0], edge_index[1]] = edge_attr_value
+        graph.edge_attr = edge_attr.view(-1)
+        
         # reorder edge_index
-        edge_index = torch.zeros((2, graph.x.shape[0]**2))
-        for i, edge_index_tuple in enumerate(graph.edge_index.T):
-            edge_index[0, i] = edge_index_tuple[0]
-            edge_index[1, i] = edge_index_tuple[1]
+        edge_index = torch.stack([torch.tensor([i, j]) for i in range(graph.x.shape[0]) for j in range(graph.x.shape[0])], dim=1)
         graph.edge_index = edge_index.long()
         return graph
 
