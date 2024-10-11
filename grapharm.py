@@ -221,7 +221,7 @@ class GraphARM(nn.Module):
 
     def predict_new_node(self, 
                          graph, 
-                         sampling_method="argmax",
+                         sampling_method="sample",
                          preprocess=True):
         '''
         Predicts the value of a new node for graph as well as it's connection to all previously denoised nodes.
