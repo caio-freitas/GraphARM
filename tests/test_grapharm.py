@@ -5,7 +5,16 @@ Test suite for GraphARM class
                             correctly for a single-node masked graph
 
 - test_predict_and_add_node: Test if GraphArm can predict a single node and add it to the graph
-                            achieving a graph with the correct number of unmasked nodes            
+                            achieving a graph with the correct number of unmasked nodes    
+
+- TODO test_node_decay_ordering: Test if GraphArm can correctly order the nodes in a graph according
+                            to the output of an untrained diffusion ordering network
+
+- TODO test_generage_diffusion_trajectories: Test if GraphArm can correctly generate the 
+                            graph diffusion trajectories for a given graph   [Requires on test_node_decay_ordering]
+
+- TODO test_loss: Test if GraphArm can correctly calculate the VLB loss for a given graph 
+                            and the output of the denoising network and diffusion ordering network
 
 '''
 import pytest
