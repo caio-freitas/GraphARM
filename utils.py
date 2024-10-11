@@ -122,6 +122,17 @@ class NodeMasking:
         return graph
 
 
+    def remove_empty_edges(self, graph):
+        '''
+        Removes empty edges from graph
+        '''
+        graph = graph.clone()
+        # remove masker.EMPTY_EDGE from edge_attr, and equivalent in edge_index
+        graph.edge_index = graph.edge_index[:, graph.edge_attr.squeeze() != self.EMPTY_EDGE]
+        graph.edge_attr = graph.edge_attr[graph.edge_attr.squeeze() != self.EMPTY_EDGE]
+
+        return graph
+
     def demask_node(self, graph, selected_node, node_type, connections_types):
         '''
         Demasking node mechanism
