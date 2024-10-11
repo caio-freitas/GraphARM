@@ -7,7 +7,7 @@ Test suite for GraphARM class
 - test_predict_and_add_node: Test if GraphArm can predict a single node and add it to the graph
                             achieving a graph with the correct number of unmasked nodes    
 
-- TODO test_node_decay_ordering: Test if GraphArm can correctly order the nodes in a graph according
+- test_node_decay_ordering: Test if GraphArm can correctly order the nodes in a graph according
                             to the output of an untrained diffusion ordering network
 
 - TODO test_generage_diffusion_trajectories: Test if GraphArm can correctly generate the 
@@ -77,3 +77,16 @@ class TestGraphARM:
 
         # Assert that the new graph has the correct number of nodes
         assert new_graph.x.shape[0] == test_data.x.shape[0] + 1
+
+    def test_node_decay_ordering(self):
+        test_data = self.test_masker.idxify(self.test_data)
+        node_order, sigma_t_dist_list = self.grapharm.node_decay_ordering(test_data)
+        # Convert node_order to a list to compare with the set of nodes in the graph
+        node_order = [node.item() for node in node_order]
+        # Assert that the node order is a permutation of the nodes in the graph
+        assert set(node_order) == set(range(self.test_data.x.shape[0]))
+        for t in range(len(sigma_t_dist_list)):
+            # Assert probabilities sum to 1
+            assert torch.allclose(sum(sigma_t_dist_list[t]), torch.tensor(1.0), atol=1e-6)
+            # Assert there are t nodes with probability 0 (already masked)
+            assert sum([1 for prob in sigma_t_dist_list[t] if prob == 0]) == t
