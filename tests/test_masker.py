@@ -9,6 +9,7 @@ Tests:
     - is_masked
     - remove_node
     - generate_fully_masked
+    - test fully_connect
 '''
 
 
@@ -124,3 +125,11 @@ class TestNodeReIndexing:
         assert torch.all(reindexed_data.x == self.reindexed_data.x), reindexed_data.x
         assert torch.all(reindexed_data.edge_index == self.reindexed_data.edge_index)
         assert torch.all(reindexed_data.edge_attr == self.reindexed_data.edge_attr), reindexed_data.edge_attr
+
+def test_fully_connect(test_data):
+    masker = NodeMasking(test_data)
+    fully_connected_graph = masker.fully_connect(test_data)
+    assert fully_connected_graph.edge_index.shape[1] == test_data.x.shape[0]**2
+    # Assert symmetry in the fully connected graph (edge attributes are the same in both directions)
+    for i, j in fully_connected_graph.edge_index.T:
+        assert fully_connected_graph.edge_attr[i * fully_connected_graph.x.shape[0] + j] == fully_connected_graph.edge_attr[j * fully_connected_graph.x.shape[0] + i]

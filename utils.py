@@ -166,6 +166,7 @@ class NodeMasking:
             # restore values of original edges
             for edge_attr, edge_index in zip(graph.edge_attr, graph.edge_index.T):
                 fully_connected.edge_attr[edge_index[0] * fully_connected.x.shape[0] + edge_index[1]] = edge_attr
+                fully_connected.edge_attr[edge_index[1] * fully_connected.x.shape[0] + edge_index[0]] = edge_attr  # Ensure symmetry
 
         fully_connected.edge_index = torch.nonzero(adjacency_matrix).T
         return fully_connected
