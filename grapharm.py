@@ -47,15 +47,14 @@ class GraphARM(nn.Module):
             # use diffusion ordering network to get probabilities
             sigma_t_dist = self.diffusion_ordering_network(p, node_order)
             # sample (only unmasked nodes) from categorical distribution to get node to mask
-            unmasked = ~self.masker.is_masked(p)
+            unmasked = torch.tensor([i not in node_order for i in range(p.x.shape[0])]).to(self.device)
+
             sigma_t_dist_list.append(sigma_t_dist.flatten())
             sigma_t = torch.distributions.Categorical(probs=sigma_t_dist[unmasked].flatten()).sample()
 
             # get node index
             sigma_t = torch.where(unmasked.flatten())[0][sigma_t.long()]
             node_order.append(sigma_t)
-            # mask node
-            # p = self.masker.mask_node(p, sigma_t) # TODO should this be done here?
         return node_order, sigma_t_dist_list
 
     def uniform_node_decay_ordering(self, datapoint):
@@ -183,7 +182,7 @@ class GraphARM(nn.Module):
                             # calculate loss
                             reward = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M)
                             wandb.log({"vlb": reward.item()})
-                            acc_reward -= reward.item()
+                            acc_reward += reward.item()
                             # backprop (accumulated gradients)
                             reward.backward(retain_graph=True)
                             pbar.set_description(f"Reward: {acc_reward:.4f}")
