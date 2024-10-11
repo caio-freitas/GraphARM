@@ -31,8 +31,8 @@ class GraphARM(nn.Module):
         self.masker = NodeMasking(dataset)
 
 
-        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-3, betas=(0.9, 0.999))
-        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-3, betas=(0.9, 0.999))
+        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-4, betas=(0.9, 0.999))
+        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-4, betas=(0.9, 0.999))
 
 
     def node_decay_ordering(self, datapoint):
@@ -55,7 +55,7 @@ class GraphARM(nn.Module):
             sigma_t = torch.where(unmasked.flatten())[0][sigma_t.long()]
             node_order.append(sigma_t)
             # mask node
-            p = self.masker.mask_node(p, sigma_t)
+            # p = self.masker.mask_node(p, sigma_t) # TODO should this be done here?
         return node_order, sigma_t_dist_list
 
     def uniform_node_decay_ordering(self, datapoint):
@@ -240,13 +240,13 @@ class GraphARM(nn.Module):
             if sampling_method == "sample":
                 node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
             elif sampling_method == "argmax":
-                node_type = torch.argmax(node_type_probs.squeeze(), dim=-1)
+                node_type = torch.argmax(node_type_probs.squeeze(), dim=-1).reshape(-1, 1)
 
             # sample edge type
             if sampling_method == "sample":
                 new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
             elif sampling_method == "argmax":
-                new_connections = torch.argmax(edge_type_probs.squeeze(), dim=-1)
+                new_connections = torch.argmax(edge_type_probs.squeeze(), dim=-1).reshape(-1, 1)
             # no need to filter connection to previously denoised nodes, assuming only one new node is added at a time
            
         return node_type, new_connections
