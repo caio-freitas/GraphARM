@@ -10,7 +10,7 @@ Test suite for GraphARM class
 - test_node_decay_ordering: Test if GraphArm can correctly order the nodes in a graph according
                             to the output of an untrained diffusion ordering network
 
-- TODO test_generage_diffusion_trajectories: Test if GraphArm can correctly generate the 
+- test_generage_diffusion_trajectories: Test if GraphArm can correctly generate the 
                             graph diffusion trajectories for a given graph   [Requires on test_node_decay_ordering]
 
 - TODO test_loss: Test if GraphArm can correctly calculate the VLB loss for a given graph 
@@ -90,3 +90,23 @@ class TestGraphARM:
             assert torch.allclose(sum(sigma_t_dist_list[t]), torch.tensor(1.0), atol=1e-6)
             # Assert there are t nodes with probability 0 (already masked)
             assert sum([1 for prob in sigma_t_dist_list[t] if prob == 0]) == t
+
+    @pytest.fixture
+    def diffusion_trajectory(self):
+        test_graph = self.test_masker.idxify(self.test_data)
+        diffusion_trajectory, node_order, sigma_t_dist = self.grapharm.generate_diffusion_trajectories(test_graph, M=1)[0]
+        return diffusion_trajectory, node_order, sigma_t_dist
+
+    def test_diffusion_trajectory_final_state(self, diffusion_trajectory):
+        diffusion_trajectory, _, _ = diffusion_trajectory
+        # Check that last graph in diffusion_trajectory is a single-node masked graph
+        assert diffusion_trajectory[-1].x.shape[0] == 1
+        assert torch.allclose(diffusion_trajectory[-1].edge_index, torch.tensor([[0], [0]]))
+        assert torch.allclose(diffusion_trajectory[-1].edge_attr, torch.tensor([self.test_masker.EMPTY_EDGE]))
+
+    def test_diffusion_trajectory_initial_state(self, diffusion_trajectory):
+        diffusion_trajectory, _, _ = diffusion_trajectory
+        # Check that the first graph in diffusion_trajectory is the original graph
+        assert torch.allclose(diffusion_trajectory[0].x, self.test_data.x)
+        assert torch.allclose(diffusion_trajectory[0].edge_index, self.test_data.edge_index)
+        assert torch.allclose(diffusion_trajectory[0].edge_attr, self.test_data.edge_attr)
