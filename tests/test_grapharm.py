@@ -99,14 +99,14 @@ class TestGraphARM:
 
     def test_diffusion_trajectory_final_state(self, diffusion_trajectory):
         diffusion_trajectory, _, _ = diffusion_trajectory
-        # Check that last graph in diffusion_trajectory is a single-node masked graph
+        # Check if last graph in diffusion_trajectory is a single-node masked graph
         assert diffusion_trajectory[-1].x.shape[0] == 1
         assert torch.allclose(diffusion_trajectory[-1].edge_index, torch.tensor([[0], [0]]))
         assert torch.allclose(diffusion_trajectory[-1].edge_attr, torch.tensor([self.test_masker.EMPTY_EDGE]))
 
     def test_diffusion_trajectory_initial_state(self, diffusion_trajectory):
         diffusion_trajectory, _, _ = diffusion_trajectory
-        # Check that the first graph in diffusion_trajectory is the original graph
+        # Check if the first graph in diffusion_trajectory is the original graph
         assert torch.allclose(diffusion_trajectory[0].x, self.test_data.x)
         assert torch.allclose(diffusion_trajectory[0].edge_index, self.test_data.edge_index)
         assert torch.allclose(diffusion_trajectory[0].edge_attr, self.test_data.edge_attr)
