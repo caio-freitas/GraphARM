@@ -104,3 +104,37 @@ class TestGraphARM:
         assert diffusion_trajectory[-1].x.shape[0] == 1
         assert torch.allclose(diffusion_trajectory[-1].edge_index, torch.tensor([[0], [0]]))
         assert torch.allclose(diffusion_trajectory[-1].edge_attr, torch.tensor([self.test_masker.EDGE_MASK]))
+
+    def test_predict_single_node(self):
+        # Test if GraphARM can predict a single node correctly for a single-node masked graph
+        predicted_node_type, predicted_connection_types = self.grapharm.predict_new_node(self.empty_graph, sampling_method='sample', preprocess=False)
+        # Assert that predicted node type is a number in the range of node types (according to the unique node types in the dataset)
+        assert predicted_node_type in range(self.test_data.x.unique().shape[0])
+        # Assert that predicted connection types are numbers in the range of edge types, +1 for the empty connection type
+        assert all([connection_type in range(self.test_data.edge_attr.unique().shape[0]+1) for connection_type in predicted_connection_types])
+    
+    def test_generate_sample_graph(self):
+        # Generate a new graph with 5 nodes
+        gen_graph = self.test_masker.generate_fully_masked(n_nodes=1)
+        for i in range(4):
+            node_type, connections = self.grapharm.predict_new_node(gen_graph, sampling_method='sample', preprocess=False)
+            gen_graph = self.test_masker.demask_node(gen_graph, i, node_type, connections)
+            gen_graph = self.test_masker.add_masked_node(gen_graph)
+
+        node_type, connections = self.grapharm.predict_new_node(gen_graph, sampling_method='sample', preprocess=False)
+        gen_graph = self.test_masker.demask_node(gen_graph, 4, node_type, connections)
+
+        # remove masker.EMPTY_EDGE from edge_attr, and equivalent in edge_index
+        gen_graph.edge_index = gen_graph.edge_index[:, gen_graph.edge_attr.squeeze() != self.test_masker.EMPTY_EDGE]
+        gen_graph.edge_attr = gen_graph.edge_attr[gen_graph.edge_attr.squeeze() != self.test_masker.EMPTY_EDGE]
+
+        gen_graph = self.test_masker.deidxify(gen_graph)
+
+        # Assert that the generated graph has the correct number of nodes
+        assert gen_graph.x.shape[0] == 5
+        # Assert that there are no masked nodes in the generated graph
+        assert self.test_masker.NODE_MASK not in gen_graph.x
+        # Assert that there are no masked edges in the generated graph
+        assert self.test_masker.EDGE_MASK not in gen_graph.edge_attr
+        
+

@@ -3,6 +3,7 @@ Test Suite for the NodeMasking class
 
 Tests:
     - masking a single node
+    - TODO demasking a single node
     - adding a masked node
     - idxify
     - deidxify
