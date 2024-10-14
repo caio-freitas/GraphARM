@@ -111,43 +111,42 @@ class GraphARM(nn.Module):
         self.denoising_optimizer.zero_grad()
         self.ordering_optimizer.zero_grad()
 
-
+        eta = self.ordering_optimizer.param_groups[0]['lr']  # Learning rate from optimizer
         self.denoising_network.train()
         self.diffusion_ordering_network.eval()
-        loss = torch.tensor(0.0, requires_grad=True)
         acc_loss = 0.0
         with tqdm(train_data) as pbar:
             for graph in pbar:
-                # preprocess graph
                 graph = self.preprocess(graph)
-                diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
-                # predictions & loss
+                diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
+
+                # Compute loss based on the simplified training objective
                 for diffusion_trajectory, node_order, sigma_t_dist in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
+                    n = len(node_order)
+                    
+                    # Uniform sampling of t from 1 to n
+                    t = torch.randint(1, n+1, (1,)).item()  # Sample t uniformly from 1 to n
 
-                    for t in range(len(node_order)):
-                        for k in range(len(node_order) - t - 1):# until t
-                            G_pred = diffusion_trajectory[t+1].clone()                              
+                    # Predict the node and edge types at step t
+                    G_pred = diffusion_trajectory[t].clone()
+                    node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
 
-                            # predict node and edge type distributions
-                            node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
+                    # Get the log-likelihood of the prediction
+                    for k in range(n - t):
+                        w_k = sigma_t_dist[t][node_order[k]].detach()  # Ordering probability for node k
+                        loss = self.compute_loss(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, n)
+                        acc_loss += loss.item()
 
-                            w_k = sigma_t_dist[t][node_order[k]]
-                            w_k = w_k.detach()
-                            wandb.log({"target_node_ordering_prob": w_k.item()})
-                            # calculate loss
-                            loss = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M) # cumulative, to join (k) from all previously denoised nodes
-                            wandb.log({"vlb": loss.item()})
+                        # Backpropagate the loss
+                        loss.backward(retain_graph=True)
+                        pbar.set_description(f"Loss: {acc_loss:.4f}")
 
-                            acc_loss += loss.item()
-                            # backprop (accumulated gradients)
-                            loss.backward(retain_graph=True)
-                            pbar.set_description(f"Loss: {acc_loss:.4f}")
-        
-        # update parameters using accumulated gradients
+        # Update parameters
         self.denoising_optimizer.step()
-        
-        # log loss
+        self.denoising_optimizer.zero_grad()
+
+        # Logging final accumulated loss
         wandb.log({"loss": acc_loss})
 
         self.denoising_optimizer.zero_grad()
@@ -159,17 +158,21 @@ class GraphARM(nn.Module):
 
         reward = torch.tensor(0.0, requires_grad=True)
         acc_reward = 0.0
+
+        # REINFORCE: Accumulate rewards and log probabilities
+        reinforce_loss = torch.tensor(0.0, requires_grad=True)
+
         with tqdm(val_data) as pbar:
             for graph in pbar:
                 # preprocess graph
                 graph = self.preprocess(graph)
-                diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)  
+                diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
                 # predictions & loss
-                for diffusion_trajectory, node_order, sigma_t_dist_unmasked  in diffusion_trajectories:
+                for diffusion_trajectory, node_order, sigma_t_dist_unmasked in diffusion_trajectories:
                     G_0 = diffusion_trajectory[0]
                     for t in range(len(node_order)):
                         for k in range(len(node_order) - t - 1):
-                            G_pred = diffusion_trajectory[t+1].clone()                              
+                            G_pred = diffusion_trajectory[t + 1].clone()
 
                             # predict node and edge type distributions
                             node_type_probs, edge_type_probs = self.denoising_network(G_pred.x, G_pred.edge_index, G_pred.edge_attr)
@@ -178,45 +181,91 @@ class GraphARM(nn.Module):
                             edge_type_probs = edge_type_probs.detach()
 
                             w_k = sigma_t_dist_unmasked[t][node_order[k]]
-                            wandb.log({"target_node_ordering_prob": w_k.item()})
-                            # calculate loss
-                            reward = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M)
-                            wandb.log({"vlb": reward.item()})
+                            # Calculate the reward (negative VLB)
+                            reward = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], M)
                             acc_reward += reward.item()
-                            # backprop (accumulated gradients)
-                            reward.backward(retain_graph=True)
+
+                            # REINFORCE gradient accumulation
+                            log_prob = torch.log(sigma_t_dist_unmasked[t][node_order[k]])
+                            reinforce_loss = reinforce_loss + reward.detach() * log_prob
+
+                            # Backpropagate (accumulated gradients)
                             pbar.set_description(f"Reward: {acc_reward:.4f}")
 
-        
-        wandb.log({"reward": acc_reward})
-        # update parameters (REINFORCE algorithm)
+        # Update diffusion ordering network using REINFORCE
+        reinforce_loss = -(eta / M) * reinforce_loss  # Scale by eta/M as per equation (4)
+        reinforce_loss.backward()
         self.ordering_optimizer.step()
+
+        # Log rewards
+        wandb.log({"reinforce_loss": reinforce_loss.item(), "reward": acc_reward})
         
-
-
-    def vlb(self, G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, M):
+    
+        
+    def compute_loss(self, G_0, node_type_probs, edge_type_probs, w_k, node, node_order, t, n):
         '''
-        Calculates the variational lower bound (VLB) for a given node and edge type distribution, 
-        relative to the original graph G_0.
-        ** Ignores the KL divergence term, as described in the paper.
-        ** edge_type_probs only contains probabilities for edges between node and node_order[t:] - see generate_diffusion_trajectories()
+        Computes the log-likelihood for the node and edge type predictions
+        as per the simplified training objective in the paper.
+
+        G_0: original graph
+        node_type_probs: predicted node type probabilities
+        edge_type_probs: predicted edge type probabilities
+        w_k: ordering probability for node k
+        node: node index
+        node_order: node order
+        t: current time step
+        n: total number of nodes
         '''
+        # Calculate the log-likelihood of the node type prediction
+        node_type_log_prob = torch.log(node_type_probs[G_0.x[node]])
+
+        # Retrieve edge attributes and calculate the log-likelihood of edge types
         T = len(node_order)
-        n_i = G_0.x.shape[0]
-        # retrieve edge type from G_t.edge_attr, edges between node and node_order[t:]
         edge_attrs_matrix = G_0.edge_attr.reshape(T, T)
         original_edge_types = torch.index_select(edge_attrs_matrix[node], 0, torch.tensor(node_order[t:]).to(self.device))
-        # calculate probability of edge type
         p_edges = torch.gather(edge_type_probs, 1, original_edge_types.reshape(-1, 1))
         log_p_edges = torch.sum(torch.log(p_edges))
-        # log_p_edges = torch.sum(torch.tensor([0]))
-        wandb.log({"target_node_type_prob": node_type_probs[G_0.x[node]].item()})
-        wandb.log({"target_edges_log_prob": log_p_edges})
-        # calculate loss
-        log_p_O_v =  log_p_edges + torch.log(node_type_probs[G_0.x[node]])
-        loss = -(n_i/T)*log_p_O_v*w_k/M # cumulative, to join (k) from all previously denoised nodes
+
+        # Final log-likelihood combining node and edge predictions
+        log_p_O_v = node_type_log_prob + log_p_edges
+
+        # Calculate the loss based on the simplified training objective
+        loss = -(n / T) * log_p_O_v * w_k / n  # Simplified equation for loss
+
         return loss
 
+    def vlb(
+            self,
+            G_0,  # Initial graph (ground truth)
+            node_type_probs,  # Predicted node type probabilities (from denoising network)
+            edge_type_probs,  # Predicted edge type probabilities (from denoising network)
+            w_k,  # Weight of current node in the ordering
+            node_index,  # Current node's index in the ordering
+            M  # Number of trajectories
+        ):
+
+
+        # True node type from the initial graph (G_0)
+        true_node_type = G_0.x[node_index].item()
+         # Log-likelihood of node types (cross-entropy)
+        node_log_likelihood = torch.log(node_type_probs[true_node_type] + 1e-10)
+        node_loss = -w_k * node_log_likelihood
+
+        # Log-likelihood of edge types (cross-entropy)
+        # Assuming the edges are stored as tuples in the form (source, target, edge_type)
+        edge_loss = 0.0
+        for edge in G_0.edge_index.T:
+            if edge[0] != node_index:
+                continue
+            source, target = edge
+            true_edge_type = G_0.edge_attr[source * G_0.x.shape[0] + target].item()
+            edge_log_likelihood = torch.log(edge_type_probs[target][true_edge_type] + 1e-10)
+            edge_loss += -w_k * edge_log_likelihood
+
+        # Combine losses (for the current node and edges at time t)
+        loss = (node_loss + edge_loss) / M
+
+        return loss
 
     def predict_new_node(self, 
                          graph, 
