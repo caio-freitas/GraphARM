@@ -98,6 +98,13 @@ class TestNodeMasking:
         assert torch.all(masked_datapoint.x == self.test_masker.NODE_MASK)
         assert torch.all(masked_datapoint.edge_attr == self.test_masker.EDGE_MASK)
 
+    def test_remove_empty_edges(self):
+        # Test removing empty edges
+        self.test_data.edge_attr[0:2] = self.test_masker.EMPTY_EDGE
+        removed_datapoint = self.test_masker.remove_empty_edges(self.test_data)
+        assert removed_datapoint.edge_attr.shape[0] == removed_datapoint.edge_index.shape[1]
+        assert torch.all(removed_datapoint.edge_attr != self.test_masker.EMPTY_EDGE)
+
 class TestNodeReIndexing:
     @pytest.fixture(autouse=True)
     def setup(self):
