@@ -127,9 +127,7 @@ class TestGraphARM:
         # remove masker.EMPTY_EDGE from edge_attr, and equivalent in edge_index
         gen_graph.edge_index = gen_graph.edge_index[:, gen_graph.edge_attr.squeeze() != self.test_masker.EMPTY_EDGE]
         gen_graph.edge_attr = gen_graph.edge_attr[gen_graph.edge_attr.squeeze() != self.test_masker.EMPTY_EDGE]
-
-        gen_graph = self.test_masker.deidxify(gen_graph)
-
+        
         # Assert that the generated graph has the correct number of nodes
         assert gen_graph.x.shape[0] == 5
         # Assert that there are no masked nodes in the generated graph
