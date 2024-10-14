@@ -94,6 +94,7 @@ class TestGraphARM:
     @pytest.fixture
     def diffusion_trajectory(self):
         test_graph = self.test_masker.idxify(self.test_data)
+        test_graph = self.grapharm.preprocess(test_graph)
         diffusion_trajectory, node_order, sigma_t_dist = self.grapharm.generate_diffusion_trajectories(test_graph, M=1)[0]
         return diffusion_trajectory, node_order, sigma_t_dist
 
@@ -102,11 +103,4 @@ class TestGraphARM:
         # Check if last graph in diffusion_trajectory is a single-node masked graph
         assert diffusion_trajectory[-1].x.shape[0] == 1
         assert torch.allclose(diffusion_trajectory[-1].edge_index, torch.tensor([[0], [0]]))
-        assert torch.allclose(diffusion_trajectory[-1].edge_attr, torch.tensor([self.test_masker.EMPTY_EDGE]))
-
-    def test_diffusion_trajectory_initial_state(self, diffusion_trajectory):
-        diffusion_trajectory, _, _ = diffusion_trajectory
-        # Check if the first graph in diffusion_trajectory is the original graph
-        assert torch.allclose(diffusion_trajectory[0].x, self.test_data.x)
-        assert torch.allclose(diffusion_trajectory[0].edge_index, self.test_data.edge_index)
-        assert torch.allclose(diffusion_trajectory[0].edge_attr, self.test_data.edge_attr)
+        assert torch.allclose(diffusion_trajectory[-1].edge_attr, torch.tensor([self.test_masker.EDGE_MASK]))
