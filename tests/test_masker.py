@@ -3,8 +3,9 @@ Test Suite for the NodeMasking class
 
 Tests:
     - masking a single node
-    - TODO demasking a single node
+    - demasking a single node
     - adding a masked node
+    - TODO removing a node
     - idxify
     - deidxify
     - is_masked
@@ -41,6 +42,33 @@ class TestNodeMasking:
             masked_datapoint = self.test_masker.mask_node(self.test_data, node)
             self._assert_node_masked(masked_datapoint, node)
             self._assert_edges_masked(masked_datapoint, node)
+            
+    
+    def test_demask_single_node(self):
+        # Test demasking a single node
+        test_data = self.test_masker.idxify(self.test_data)
+        for node in range(self.test_data.x.shape[0]):
+            # Mask the node first
+            masked_datapoint = self.test_masker.mask_node(test_data, node)
+            
+            # Prepare mock values for demasking
+            demask_value = torch.zeros(1)  # Assuming a zero vector for demask value
+            connection_types = torch.zeros(masked_datapoint.x.shape[0])  # Zeroing the edge attributes
+            
+            # Demask the node
+            demasked_datapoint = self.test_masker.demask_node(masked_datapoint, node, demask_value, connection_types)
+            
+            # Check that the node's feature is restored
+            assert torch.all(demasked_datapoint.x[node] == demask_value)
+            
+            # Check that the edges connected to this node are restored on all edges of demasked datapoint
+            for i, edge in enumerate(demasked_datapoint.edge_index.T):
+                if edge[0] == node:
+                    assert demasked_datapoint.edge_attr[i] == connection_types[edge[1]]
+                elif edge[1] == node:
+                    assert demasked_datapoint.edge_attr[i] == connection_types[edge[0]]
+                    
+                    
 
     def _assert_node_masked(self, masked_datapoint, node):
         assert masked_datapoint.x[node] == self.test_masker.NODE_MASK
