@@ -5,8 +5,8 @@ import wandb
 import torch.nn as nn
 import logging
 
-from models import DiffusionOrderingNetwork, DenoisingNetwork
-from utils import NodeMasking
+from .models import DiffusionOrderingNetwork, DenoisingNetwork
+from .utils import NodeMasking
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -31,8 +31,8 @@ class GraphARM(nn.Module):
         self.masker = NodeMasking(dataset)
 
 
-        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-3, betas=(0.9, 0.999))
-        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-3, betas=(0.9, 0.999))
+        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-4, betas=(0.9, 0.999))
+        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-4, betas=(0.9, 0.999))
 
 
     def node_decay_ordering(self, datapoint):
@@ -47,15 +47,14 @@ class GraphARM(nn.Module):
             # use diffusion ordering network to get probabilities
             sigma_t_dist = self.diffusion_ordering_network(p, node_order)
             # sample (only unmasked nodes) from categorical distribution to get node to mask
-            unmasked = ~self.masker.is_masked(p)
+            unmasked = torch.tensor([i not in node_order for i in range(p.x.shape[0])]).to(self.device)
+
             sigma_t_dist_list.append(sigma_t_dist.flatten())
             sigma_t = torch.distributions.Categorical(probs=sigma_t_dist[unmasked].flatten()).sample()
 
             # get node index
             sigma_t = torch.where(unmasked.flatten())[0][sigma_t.long()]
             node_order.append(sigma_t)
-            # mask node
-            p = self.masker.mask_node(p, sigma_t)
         return node_order, sigma_t_dist_list
 
     def uniform_node_decay_ordering(self, datapoint):
@@ -99,8 +98,6 @@ class GraphARM(nn.Module):
         Preprocesses graph to be used by the denoising network.
         '''
         graph = graph.clone()
-        # node and edge types to idx
-        graph = self.masker.idxify(graph)
         graph = self.masker.fully_connect(graph)
         return graph
 
@@ -144,7 +141,7 @@ class GraphARM(nn.Module):
 
                             acc_loss += loss.item()
                             # backprop (accumulated gradients)
-                            loss.backward()
+                            loss.backward(retain_graph=True)
                             pbar.set_description(f"Loss: {acc_loss:.4f}")
         
         # update parameters using accumulated gradients
@@ -185,9 +182,9 @@ class GraphARM(nn.Module):
                             # calculate loss
                             reward = self.vlb(G_0, node_type_probs, edge_type_probs, w_k, node_order[k], node_order, t, M)
                             wandb.log({"vlb": reward.item()})
-                            acc_reward -= reward.item()
+                            acc_reward += reward.item()
                             # backprop (accumulated gradients)
-                            reward.backward()
+                            reward.backward(retain_graph=True)
                             pbar.set_description(f"Reward: {acc_reward:.4f}")
 
         
@@ -223,7 +220,7 @@ class GraphARM(nn.Module):
 
     def predict_new_node(self, 
                          graph, 
-                         sampling_method="argmax",
+                         sampling_method="sample",
                          preprocess=True):
         '''
         Predicts the value of a new node for graph as well as it's connection to all previously denoised nodes.
@@ -235,8 +232,6 @@ class GraphARM(nn.Module):
         with torch.no_grad():
             if preprocess:
                 graph = self.preprocess(graph)
-            # add masked node to graph
-            graph = self.masker.add_masked_node(graph)
             # predict node type
             node_type_probs, edge_type_probs = self.denoising_network(graph.x, graph.edge_index, graph.edge_attr)
             
@@ -244,22 +239,15 @@ class GraphARM(nn.Module):
             if sampling_method == "sample":
                 node_type = torch.distributions.Categorical(probs=node_type_probs.squeeze()).sample()
             elif sampling_method == "argmax":
-                node_type = torch.argmax(node_type_probs.squeeze(), dim=-1)
+                node_type = torch.argmax(node_type_probs.squeeze(), dim=-1).reshape(-1, 1)
 
             # sample edge type
             if sampling_method == "sample":
                 new_connections = torch.multinomial(edge_type_probs.squeeze(), num_samples=1, replacement=True)
             elif sampling_method == "argmax":
-                new_connections = torch.argmax(edge_type_probs.squeeze(), dim=-1)
+                new_connections = torch.argmax(edge_type_probs.squeeze(), dim=-1).reshape(-1, 1)
             # no need to filter connection to previously denoised nodes, assuming only one new node is added at a time
-
-            # lookup dictionary to get node type
-            node_type = torch.tensor(next(key for key, value in self.masker.node_type_to_idx.items() if value == node_type.item()), dtype=torch.int32).to(self.device)
-
-            # lookup dictionary to get edge type
-            if new_connections.any():
-                new_connections = torch.tensor([list(self.masker.edge_type_to_idx.keys())[list(self.masker.edge_type_to_idx.values()).index(edge_idx)] for edge_idx in new_connections]).to(self.device)
-
+           
         return node_type, new_connections
 
 
