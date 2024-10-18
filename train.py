@@ -71,8 +71,7 @@ except:
 for epoch in range(2000):
     print(f"Epoch {epoch}")
     grapharm.train_step(
-        train_data=dataset[2*epoch*batch_size:(2*epoch + 1)*batch_size],
-        val_data=dataset[(2*epoch + 1)*batch_size:batch_size*(2*epoch + 2)],
+        batch=dataset[2*epoch*batch_size:(2*epoch + 1)*batch_size],
         M=4
     )
     grapharm.save_model()
