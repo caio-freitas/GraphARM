@@ -51,10 +51,12 @@ class TestNodeMasking:
             # Mask the node first
             masked_datapoint = self.test_masker.mask_node(test_data, node)
             
-            # Prepare mock values for demasking
-            demask_value = torch.zeros(1)  # Assuming a zero vector for demask value
-            connection_types = torch.zeros(masked_datapoint.x.shape[0])  # Zeroing the edge attributes
-            
+            # Retrieve original values for demasking
+            demask_value = self.test_data.x[node].clone()  # Clone the original node feature
+            connection_types = []
+            for i in range(self.test_data.x.shape[0]):
+                connection_types.append(self.test_data.edge_attr[(self.test_data.edge_index[0] == i) | (self.test_data.edge_index[1] == i)][0].item())
+            connection_types = torch.tensor(connection_types)
             # Demask the node
             demasked_datapoint = self.test_masker.demask_node(masked_datapoint, node, demask_value, connection_types)
             
