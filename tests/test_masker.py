@@ -3,8 +3,9 @@ Test Suite for the NodeMasking class
 
 Tests:
     - masking a single node
-    - TODO demasking a single node
+    - demasking a single node
     - adding a masked node
+    - TODO removing a node
     - idxify
     - deidxify
     - is_masked
@@ -22,9 +23,9 @@ from ..utils import NodeMasking
 @pytest.fixture
 def test_data():
     # Create a mock dataset
-    x = torch.tensor([[0], [1], [5]], dtype=torch.float)
-    edge_index = torch.tensor([[0, 1, 2, 0], [1, 2, 0, 2]], dtype=torch.long)
-    edge_attr = torch.tensor([0, 1, 2, 0], dtype=torch.float)
+    x = torch.tensor([[0], [1], [5], [1]], dtype=torch.float)
+    edge_index = torch.tensor([[0, 1, 2, 0, 3], [1, 2, 0, 2, 3]], dtype=torch.long)
+    edge_attr = torch.tensor([0, 1, 2, 1, 2], dtype=torch.float)
     datapoint = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
     return datapoint
 
@@ -32,8 +33,9 @@ def test_data():
 class TestNodeMasking:
     @pytest.fixture(autouse=True)
     def setup(self, test_data):
-        self.test_data = test_data
         self.test_masker = NodeMasking(test_data)
+        self.test_data = self.test_masker.idxify(test_data)
+        self.test_data = self.test_masker.fully_connect(self.test_data)
 
     def test_mask_single_node(self):
         # Test masking one node at a time
@@ -41,6 +43,54 @@ class TestNodeMasking:
             masked_datapoint = self.test_masker.mask_node(self.test_data, node)
             self._assert_node_masked(masked_datapoint, node)
             self._assert_edges_masked(masked_datapoint, node)
+            
+    
+    def test_demask_single_node(self):
+        # Test demasking a single node
+
+        for node in range(self.test_data.x.shape[0]):
+            # Mask the node first
+            masked_datapoint = self.test_masker.mask_node(self.test_data, node)
+            
+            # Retrieve original values for demasking
+            demask_value = self.test_data.x[node].clone()  # Clone the original node feature
+            connection_types = []
+            for i in range(self.test_data.x.shape[0]):
+                connection_types.append(self.test_data.edge_attr[(self.test_data.edge_index[0] == i) & (self.test_data.edge_index[1] == node)].item()) # Get the first edge attribute connected to the node
+            connection_types = torch.tensor(connection_types)
+            # Demask the node
+            demasked_datapoint = self.test_masker.demask_node(masked_datapoint, node, demask_value, connection_types)
+            
+            # Check that the node's feature is restored
+            assert torch.all(demasked_datapoint.x[node] == demask_value)
+            
+            # Check that the edges connected to this node are restored on all edges of demasked datapoint
+            for i, edge in enumerate(demasked_datapoint.edge_index.T):
+                if edge[0] == node:
+                    assert demasked_datapoint.edge_attr[i] == self.test_data.edge_attr[(self.test_data.edge_index[0] == node) & (self.test_data.edge_index[1] == edge[1])][0]
+                elif edge[1] == node:
+                    assert demasked_datapoint.edge_attr[i] == self.test_data.edge_attr[(self.test_data.edge_index[1] == node) & (self.test_data.edge_index[0] == edge[0])][0]
+                    
+                    
+    def test_remove_node(self):
+        # Test removing a node
+        for node in range(self.test_data.x.shape[0]):
+            removed_datapoint = self.test_masker.remove_node(self.test_data, node)
+            
+            # Check if node is removed
+            assert removed_datapoint.x.shape[0] == self.test_data.x.shape[0] - 1
+            
+            # Check that the remaining nodes are intact (no changes to other nodes)
+            remaining_nodes = torch.arange(self.test_data.x.shape[0]) != node
+            assert torch.all(removed_datapoint.x == self.test_data.x[remaining_nodes])
+
+            # Check that the edges of the removed node are gone
+            assert torch.all(removed_datapoint.edge_index[0] != node)
+            assert torch.all(removed_datapoint.edge_index[1] != node)
+
+            # Check that the edge index and edge attributes are updated correctly
+            assert removed_datapoint.edge_index.shape[1] == removed_datapoint.edge_attr.shape[0]
+
 
     def _assert_node_masked(self, masked_datapoint, node):
         assert masked_datapoint.x[node] == self.test_masker.NODE_MASK

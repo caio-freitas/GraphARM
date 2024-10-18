@@ -139,6 +139,8 @@ class NodeMasking:
         1. Unmasked node (graph.x = node_type)
         2. Connected to all other nodes in graph by unmasked edges (graph.edge_attr <= connections_types)
         '''
+        assert connections_types.shape[0] == graph.x.shape[0], "Number of connections must be equal to number of nodes"
+        
         # demask node
         graph = graph.clone()
         graph.x[selected_node] = node_type
@@ -146,9 +148,8 @@ class NodeMasking:
         for i, connection in enumerate(connections_types):
             if not self.is_masked(graph, node=i):
                 graph.edge_attr[torch.logical_and(graph.edge_index[0] == i, graph.edge_index[1] == selected_node)] = connection
-                
-        # reorder edge_attr and edge_index to be like on nx graph
-        graph = self._reorder_edge_attr_and_index(graph)
+                graph.edge_attr[torch.logical_and(graph.edge_index[1] == i, graph.edge_index[0] == selected_node)] = connection
+        
         return graph
     def fully_connect(self, graph, keep_original_edges=True):
         '''
