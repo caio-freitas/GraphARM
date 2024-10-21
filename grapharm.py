@@ -188,14 +188,18 @@ class GraphARM(nn.Module):
             denoising_loss = sum([self.compute_denoising_loss(traj[0], traj[1], traj[2]) for traj in diffusion_trajectories])
             total_denoising_loss += denoising_loss
 
-            # Compute ordering loss using REINFORCE
-            ordering_loss = self.compute_ordering_loss(diffusion_trajectories, M)
-            total_ordering_loss += ordering_loss
-
         # Backpropagation
         total_denoising_loss.backward()
         self.denoising_optimizer.step()
         wandb.log({"denoising_loss": total_denoising_loss.item()})
+
+        for graph in batch:
+            graph = self.preprocess(graph)
+            diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
+
+            # Compute ordering loss using REINFORCE
+            ordering_loss = self.compute_ordering_loss(diffusion_trajectories, M)
+            total_ordering_loss += ordering_loss
 
         total_ordering_loss.backward()
         self.ordering_optimizer.step()
@@ -220,6 +224,7 @@ class GraphARM(nn.Module):
                 graph = self.preprocess(graph)
             # predict node type
             node_type_probs, edge_type_probs = self.denoising_network(graph.x, graph.edge_index, graph.edge_attr)
+            node_type_probs = node_type_probs[-1] # only predict for last node
             
             # sample node type
             if sampling_method == "sample":
