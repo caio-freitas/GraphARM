@@ -98,6 +98,7 @@ class GraphARM(nn.Module):
         Preprocesses graph to be used by the denoising network.
         '''
         graph = graph.clone()
+        graph = self.masker.idxify(graph)
         graph = self.masker.fully_connect(graph)
         return graph
 
@@ -107,22 +108,46 @@ class GraphARM(nn.Module):
         '''
         loss = 0
         T = len(diffusion_trajectory) - 1  # Total number of time steps
-
+        sigma_t = torch.stack(sigma_t_dist_list, dim=0)
+        G_0 = diffusion_trajectory[0]  # Original graph
         for t in range(1, T+1):  # Start at 1 because 0 is the original graph
             graph_t = diffusion_trajectory[t-1]  # G_t
             graph_t_next = diffusion_trajectory[t]  # G_{t+1}
 
             # Predict node and edge types
-            node_type_probs, edge_type_probs = self.denoising_network(graph_t.x, graph_t.edge_index, graph_t.edge_attr)
+            node_type_probs, edge_type_probs = self.denoising_network(graph_t_next.x, graph_t_next.edge_index, graph_t_next.edge_attr)
 
             # Compute NLL for node type
-            nll_node = -torch.log(node_type_probs[range(node_type_probs.size(0)), graph_t_next.x.squeeze()])
-
-            # Compute NLL for edge types
-            nll_edge = -torch.log(edge_type_probs[range(edge_type_probs.size(0)), graph_t_next.edge_attr.squeeze()])
-
-            # Combine node and edge losses
-            loss += (nll_node + nll_edge).sum()
+            # compute for all nodes, weight them by the sigma_t_dist at the original node order
+            sigma_t_dist = sigma_t[t-1]
+            sigma_t_dist = sigma_t_dist[sigma_t_dist != 0]
+            
+            # select elements from sigma_t_dist that correspond to the original node order
+            node_probs = node_type_probs * sigma_t_dist.view(-1, 1).clone()
+            # get probability of choosing correct node type
+            correct_node_type = G_0.x[node_order_invariate[t-1]]
+            
+            nll_node = -torch.log(node_probs[:, correct_node_type].sum() + 1e-6)
+            
+            # Compute NLL for edge type
+            edge_probs = edge_type_probs.view(-1, edge_type_probs.shape[-1])
+            # get original edge index for each node being unmasked
+            
+            # get probability of choosing edge type for each edge
+            # composing edge_type_probs with sigma_t_dist
+            edge_probs = edge_probs * sigma_t_dist.view(-1, 1).clone() # TODO properly weight edge_probs
+            # get original edge index for each node being unmasked
+            edge_index = graph_t_next.edge_index
+            edge_index = edge_index[:, edge_index[0] == graph_t_next.x.shape[0]-1]
+            edge_index = edge_index[1]
+            
+            # get original edge type for each edge
+            correct_edge_type = G_0.edge_attr[edge_index]
+            edge_probs = torch.gather(edge_probs, 1, correct_edge_type.view(-1, 1))
+            nll_edge = -torch.log(edge_probs + 1e-6).sum()
+            
+            
+            loss += nll_node.mean() + nll_edge.mean()
 
         return loss / T
 
@@ -136,9 +161,12 @@ class GraphARM(nn.Module):
             reward = -self.compute_denoising_loss(trajectory, node_order, sigma_t_dist_list)
 
             # REINFORCE update (policy gradient)
-            for sigma_t_dist in sigma_t_dist_list:
-                log_prob = torch.log(sigma_t_dist)
-                ordering_loss += -reward * log_prob
+            # Calculate probability of trajectory using sigma_t_dist_list
+            log_prob = torch.tensor(0.0, device=self.device)
+            for t in range(len(sigma_t_dist_list)):
+                log_prob = log_prob + torch.log(sigma_t_dist_list[t][node_order[t]])
+            ordering_loss = ordering_loss + (-reward * log_prob)
+            
 
         return ordering_loss / M
 
@@ -153,6 +181,7 @@ class GraphARM(nn.Module):
         total_denoising_loss = 0
         total_ordering_loss = 0
         for graph in batch:
+            graph = self.preprocess(graph)
             diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
 
             # Compute denoising loss
@@ -166,9 +195,11 @@ class GraphARM(nn.Module):
         # Backpropagation
         total_denoising_loss.backward()
         self.denoising_optimizer.step()
+        wandb.log({"denoising_loss": total_denoising_loss.item()})
 
         total_ordering_loss.backward()
         self.ordering_optimizer.step()
+        wandb.log({"ordering_loss": total_ordering_loss.item()})
 
         return total_denoising_loss.item(), total_ordering_loss.item()
 
