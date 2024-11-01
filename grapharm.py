@@ -110,24 +110,24 @@ class GraphARM(nn.Module):
         T = len(diffusion_trajectory) - 1  # Total number of time steps
         sigma_t = torch.stack(sigma_t_dist_list, dim=0)
         G_0 = diffusion_trajectory[0]  # Original graph
-        for t in range(1, T+1):  # Start at 1 because 0 is the original graph
-            graph_t = diffusion_trajectory[t-1]  # G_t
-            graph_t_next = diffusion_trajectory[t]  # G_{t+1}
-
+        for t in range(0, T):  # Start at 1 because 0 is the original graph
+            graph_t = diffusion_trajectory[t]  # G_t
+            graph_t_next = diffusion_trajectory[t+1]  # G_{t+1}
+            
             # Predict node and edge types
             node_type_probs, edge_type_probs = self.denoising_network(graph_t_next.x, graph_t_next.edge_index, graph_t_next.edge_attr)
 
             # Compute NLL for node type
             # compute for all nodes, weight them by the sigma_t_dist at the original node order
-            sigma_t_dist = sigma_t[t-1]
+            sigma_t_dist = sigma_t[t]
             sigma_t_dist = sigma_t_dist[sigma_t_dist != 0]
             
             # select elements from sigma_t_dist that correspond to the original node order
             node_probs = node_type_probs * sigma_t_dist.view(-1, 1).clone()
             # get probability of choosing correct node type
-            correct_node_type = G_0.x[node_order_invariate[t-1]]
+            correct_node_type = G_0.x[node_order_invariate[t]]
             
-            nll_node = -torch.log(node_probs[:, correct_node_type].sum() + 1e-6)
+            nll_node = -torch.log(node_probs[:, correct_node_type].sum() + 1e-8)
             
             # Compute NLL for edge type
             edge_probs = edge_type_probs.view(-1, edge_type_probs.shape[-1])
@@ -135,16 +135,15 @@ class GraphARM(nn.Module):
             
             # get probability of choosing edge type for each edge
             # composing edge_type_probs with sigma_t_dist
-            edge_probs = edge_probs * sigma_t_dist.view(-1, 1).clone() # TODO properly weight edge_probs
-            # get original edge index for each node being unmasked
-            edge_index = graph_t_next.edge_index
-            edge_index = edge_index[:, edge_index[0] == graph_t_next.x.shape[0]-1]
-            edge_index = edge_index[1]
+            # P(edges) = P(node) * P(edge type|node)
+            edge_probs = edge_probs * sigma_t_dist.view(-1, 1).clone()
             
-            # get original edge type for each edge
-            correct_edge_type = G_0.edge_attr[edge_index]
+            # get original edge type for each edge in G_0
+            
+            correct_edge_type = G_0.edge_attr[(G_0.edge_index[0] == node_order_invariate[t]) & (torch.tensor([G_0.edge_index[1][i] in node_order_invariate[t:] for  i in range(G_0.edge_index.shape[1])]))]
+            # get probability of choosing correct edge type
             edge_probs = torch.gather(edge_probs, 1, correct_edge_type.view(-1, 1))
-            nll_edge = -torch.log(edge_probs + 1e-6).sum()
+            nll_edge = -torch.log(edge_probs + 1e-8).sum()
             
             
             loss += nll_node.mean() + nll_edge.mean()
@@ -159,13 +158,14 @@ class GraphARM(nn.Module):
         for trajectory, node_order, sigma_t_dist_list in diffusion_trajectories:
             # Compute the reward as the negative denoising loss
             reward = -self.compute_denoising_loss(trajectory, node_order, sigma_t_dist_list)
-
+            wandb.log({"reward": reward.item()})
             # REINFORCE update (policy gradient)
             # Calculate probability of trajectory using sigma_t_dist_list
             log_prob = torch.tensor(0.0, device=self.device)
             for t in range(len(sigma_t_dist_list)):
                 log_prob = log_prob + torch.log(sigma_t_dist_list[t][node_order[t]])
-            ordering_loss = ordering_loss + (-reward * log_prob)
+            wandb.log({"log_prob_sigma_t": log_prob.item()})
+            ordering_loss = ordering_loss + (reward * log_prob)
             
 
         return ordering_loss / M
