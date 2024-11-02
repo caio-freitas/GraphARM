@@ -146,7 +146,7 @@ class TestGraphARM:
                                         sigma_t_dist=sigma_t_dist)
 
         # NLL for perfect node prediction should be 0
-        assert torch.allclose(nll, torch.tensor(0.0), atol=1e-6)
+        assert torch.allclose(nll, torch.tensor(0.0), atol=1e-6), nll
         
         correct_node_type = 0
         
@@ -168,3 +168,10 @@ class TestGraphARM:
         
         # NLL for perfect edge prediction should be 0
         assert torch.allclose(nll, torch.tensor(0.0), atol=1e-6), nll
+        
+        correct_edge_types = torch.tensor([0, 1, 0])
+        
+        nll = self.grapharm.compute_nll_edge(edge_type_probs=edge_type_probs,
+                                        correct_edge_type=correct_edge_types)
+        
+        assert not torch.allclose(nll, torch.tensor(0.0), atol=1e-6)
