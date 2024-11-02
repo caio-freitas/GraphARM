@@ -168,7 +168,7 @@ class GraphARM(nn.Module):
 
         return ordering_loss / M
 
-    def train_step(self, batch, M):
+    def train_step(self, train_batch, val_batch, M):
         '''
         Performs one training step for both the denoising and diffusion ordering networks.
         '''
@@ -179,7 +179,7 @@ class GraphARM(nn.Module):
         total_denoising_loss = 0
         total_ordering_loss = 0
 
-        for graph in batch:
+        for graph in train_batch:
             graph = self.preprocess(graph)
             diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
             
@@ -192,7 +192,7 @@ class GraphARM(nn.Module):
         self.denoising_optimizer.step()
         wandb.log({"denoising_loss": total_denoising_loss.item()})
 
-        for graph in batch:
+        for graph in val_batch:
             graph = self.preprocess(graph)
             diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
 
