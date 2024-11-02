@@ -215,9 +215,6 @@ class DenoisingNetwork(nn.Module):
         graph_embedding = graph_embedding.repeat(h_v.shape[0], 1)
 
         node_pred = self.node_pred_layer(torch.cat([graph_embedding, h_v], dim=1)) # hidden_dim + 1
-        # aggregate with torch mean pooling
-        node_pred = torch.mean(node_pred, dim=0) # TODO instead of mean, get only masked node to be unmasked
-
         
         # edge prediction follows a mixture of multinomial distribution, with
         # the Softmax(sum(mlp_alpha([graph_embedding, h_vi, h_vj])))
