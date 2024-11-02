@@ -105,15 +105,13 @@ class GraphARM(nn.Module):
         nll_node = -torch.log(node_probs[:, correct_node_type].sum() + 1e-8)
         return nll_node.mean()
 
-    def compute_nll_edge(self, edge_type_probs, correct_edge_type, sigma_t_dist):
+    def compute_nll_edge(self, edge_type_probs, correct_edge_type):
         '''
         Computes the negative log-likelihood for edge types.
         - get probability of choosing edge type for each edge
         - compose edge_type_probs with sigma_t_dist to get probability of choosing edge type for each edge
         '''
         edge_probs = edge_type_probs.view(-1, edge_type_probs.shape[-1])
-        # P(edges) = P(node) * P(edge type|node)
-        edge_probs = edge_probs * sigma_t_dist.view(-1, 1).clone()
         edge_probs = torch.gather(edge_probs, 1, correct_edge_type.view(-1, 1))
         nll_edge = -torch.log(edge_probs + 1e-8).sum()
         return nll_edge.mean()
@@ -143,7 +141,7 @@ class GraphARM(nn.Module):
             original_edge_types = G_0.edge_attr[(G_0.edge_index[0] == node_order_invariate[t]) & 
                                               (torch.tensor([G_0.edge_index[1][i] in node_order_invariate[t:] 
                                                              for i in range(G_0.edge_index.shape[1])]))]
-            nll_edge = self.compute_nll_edge(edge_type_probs, original_edge_types, sigma_t_dist)
+            nll_edge = self.compute_nll_edge(edge_type_probs, original_edge_types)
 
             loss += nll_node + nll_edge
 

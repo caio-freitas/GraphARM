@@ -13,9 +13,6 @@ Test suite for GraphARM class
 - test_generage_diffusion_trajectories: Test if GraphArm can correctly generate the 
                             graph diffusion trajectories for a given graph   [Requires on test_node_decay_ordering]
 
-- TODO test_loss: Test if GraphArm can correctly calculate the VLB loss for a given graph 
-                            and the output of the denoising network and diffusion ordering network
-
 '''
 import pytest
 import torch
@@ -135,4 +132,39 @@ class TestGraphARM:
         # Assert that there are no masked edges in the generated graph
         assert self.test_masker.EDGE_MASK not in gen_graph.edge_attr
         
+    def test_compute_nll_node(self):
+        # Test if GraphARM can compute the negative log likelihood of a node type
+                            # node type 0,    1,   2
+        node_type_probs = torch.tensor([[1.0, 0.0, 0.0],  # if node 1 is being unmasked
+                                        [0.0, 1.0, 0.0],  # if node 2 is being unmasked
+                                        [0.0, 0.0, 1.0]]) # if node 3 is being unmasked
+        correct_node_type = 1
+        sigma_t_dist = torch.tensor([[0.0, 1.0, 0.0]])    # probability of nodes being unmasked next
+        
+        nll = self.grapharm.compute_nll_node(node_type_probs=node_type_probs,
+                                        correct_node_type=correct_node_type,
+                                        sigma_t_dist=sigma_t_dist)
 
+        # NLL for perfect node prediction should be 0
+        assert torch.allclose(nll, torch.tensor(0.0), atol=1e-6)
+        
+        correct_node_type = 0
+        
+        nll = self.grapharm.compute_nll_node(node_type_probs=node_type_probs,
+                                        correct_node_type=correct_node_type,
+                                        sigma_t_dist=sigma_t_dist)
+        
+        assert not torch.allclose(nll, torch.tensor(0.0), atol=1e-6)
+        
+    def test_compute_nll_edge(self):
+        # Test if GraphARM can compute the negative log likelihood of a edge type
+        edge_type_probs = torch.tensor([[1.0, 0.0, 0.0],  # edge between node 0 and new node
+                                        [0.0, 1.0, 0.0],  # edge between node 1 and new node
+                                        [0.0, 0.0, 1.0]]) # edge between node 2 and new node
+        correct_edge_types = torch.tensor([0, 1, 2])      # correct edge types between nodes and new node
+        
+        nll = self.grapharm.compute_nll_edge(edge_type_probs=edge_type_probs,
+                                        correct_edge_type=correct_edge_types)
+        
+        # NLL for perfect edge prediction should be 0
+        assert torch.allclose(nll, torch.tensor(0.0), atol=1e-6), nll
