@@ -5,8 +5,8 @@ import wandb
 import torch.nn as nn
 import logging
 
-from .models import DiffusionOrderingNetwork, DenoisingNetwork
-from .utils import NodeMasking
+from models import DiffusionOrderingNetwork, DenoisingNetwork
+from utils import NodeMasking
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -81,7 +81,7 @@ class GraphARM(nn.Module):
                 diffusion_trajectory.append(masked_data)
                 if i < len(node_order) - 1:
                     masked_data = self.masker.remove_node(masked_data, node)
-                    node_order = [n - 1 if n > node else n for n in node_order]
+                    node_order = [n - 1 if n > node else n for n in node_order]  # update node order to account for removed node
 
             diffusion_trajectories.append([diffusion_trajectory, node_order_invariate, sigma_t_dist])
         return diffusion_trajectories
