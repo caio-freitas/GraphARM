@@ -95,6 +95,21 @@ class TestGraphARM:
         diffusion_trajectory, node_order, sigma_t_dist = self.grapharm.generate_diffusion_trajectories(test_graph, M=1)[0]
         return diffusion_trajectory, node_order, sigma_t_dist
 
+    def test_generate_diffusion_trajectories(self, diffusion_trajectory):
+        diffusion_trajectory, node_order, sigma_t_dist = diffusion_trajectory
+
+        # Assert that there's no masked nodes in the first graph
+        assert self.test_masker.NODE_MASK not in diffusion_trajectory[0].x
+        
+        for t in range(1, len(sigma_t_dist)):
+            # Assert each graph is fully connected
+            assert diffusion_trajectory[t].edge_index.shape[1] == diffusion_trajectory[t].x.shape[0] ** 2
+            # Assert that there's a single masked node in each graph
+            assert torch.sum(diffusion_trajectory[t].x == self.test_masker.NODE_MASK) == 1
+            # Assert that there's N masked edges in each graph
+            assert torch.sum(diffusion_trajectory[t].edge_attr == self.test_masker.EDGE_MASK) == 2*diffusion_trajectory[t].x.shape[0] - 1
+            
+            
     def test_diffusion_trajectory_final_state(self, diffusion_trajectory):
         diffusion_trajectory, _, _ = diffusion_trajectory
         # Check if last graph in diffusion_trajectory is a single-node masked graph
