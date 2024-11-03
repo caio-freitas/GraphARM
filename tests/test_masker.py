@@ -5,7 +5,7 @@ Tests:
     - masking a single node
     - demasking a single node
     - adding a masked node
-    - TODO removing a node
+    - removing a node
     - idxify
     - deidxify
     - is_masked
