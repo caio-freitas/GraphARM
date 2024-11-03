@@ -1,4 +1,4 @@
-torch==2.0.0
+torch
 torch-geometric
-pytorch3d==0.3.0
-
+pytest
+wandb
