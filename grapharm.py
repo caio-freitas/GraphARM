@@ -160,9 +160,9 @@ class GraphARM(nn.Module):
             # Calculate probability of trajectory using sigma_t_dist_list
             log_prob = torch.tensor(0.0, device=self.device)
             for t in range(len(sigma_t_dist_list)):
-                log_prob = log_prob + torch.log(sigma_t_dist_list[t][node_order[t]])
+                log_prob += torch.log(sigma_t_dist_list[t][node_order[t]])
             wandb.log({"log_prob_sigma_t": log_prob.item()})
-            ordering_loss = ordering_loss + (reward * log_prob)
+            ordering_loss += reward * log_prob
 
         return ordering_loss / M
 
