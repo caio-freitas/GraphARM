@@ -18,9 +18,9 @@ import pytest
 import torch
 import torch_geometric
 
-from ..grapharm import GraphARM
-from ..models import DiffusionOrderingNetwork, DenoisingNetwork
-from ..utils import NodeMasking
+from grapharm import GraphARM
+from models import DiffusionOrderingNetwork, DenoisingNetwork
+from utils import NodeMasking
 
 @pytest.fixture
 def test_data():

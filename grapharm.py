@@ -5,8 +5,8 @@ import wandb
 import torch.nn as nn
 import logging
 
-from .models import DiffusionOrderingNetwork, DenoisingNetwork
-from .utils import NodeMasking
+from models import DiffusionOrderingNetwork, DenoisingNetwork
+from utils import NodeMasking
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -28,8 +28,8 @@ class GraphARM(nn.Module):
         self.denoising_network = denoising_network.to(device)
         self.masker = NodeMasking(dataset)
 
-        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-4, betas=(0.9, 0.999))
-        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-4, betas=(0.9, 0.999))
+        self.denoising_optimizer = torch.optim.Adam(self.denoising_network.parameters(), lr=1e-5, betas=(0.9, 0.999))
+        self.ordering_optimizer = torch.optim.Adam(self.diffusion_ordering_network.parameters(), lr=5e-5, betas=(0.9, 0.999))
 
     def node_decay_ordering(self, datapoint):
         '''
