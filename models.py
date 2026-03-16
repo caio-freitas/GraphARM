@@ -1,38 +1,11 @@
 import torch
 from torch import nn
-from torch_geometric.nn.conv import RGCNConv
-from torch_geometric.nn import GAT
+from torch_geometric.nn.conv import GATConv
 from torch_geometric.utils import add_self_loops, degree
 from torch.nn import functional as F
 from torch.nn import Linear, ReLU
 import math
 from torch_geometric.nn import MessagePassing
-
-
-class RGCN(nn.Module):
-    def __init__(self, num_relations, hidden_dim, out_channels=1, num_layers=3, device='cpu'):
-        super(RGCN, self).__init__()
-        self.device = device
-        self.embedding_dim = hidden_dim
-        self.num_layers = num_layers
-
-        self.conv = []
-
-        # Define R-GCN layers
-        for layer in range(num_layers - 1):
-            self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=hidden_dim, num_relations=num_relations, num_bases=2).to(self.device))
-        
-        self.conv.append(RGCNConv(in_channels=hidden_dim, out_channels=out_channels, num_relations=num_relations, num_bases=2).to(self.device))
-    
-    def forward(self, x, edge_index, edge_type):
-        x = x.to(self.device)
-        edge_index = edge_index.to(self.device)
-        edge_type = edge_type.to(self.device)
-        
-        # R-GCN layers
-        for layer in range(self.num_layers):
-            x = self.conv[layer](x, edge_index, edge_type)
-        return x
 
 class DiffusionOrderingNetwork(nn.Module):
     '''
@@ -59,24 +32,14 @@ class DiffusionOrderingNetwork(nn.Module):
 
         # add positional encodings into node features
         self.embedding = nn.Embedding(num_embeddings=num_node_types, embedding_dim=hidden_dim).to(self.device)
+        self.edge_type_embedding = nn.Embedding(num_embeddings=num_edge_types, embedding_dim=hidden_dim).to(self.device)
 
-        # self.gat = GAT(
-        #     in_channels=hidden_dim,
-        #     out_channels=out_channels,
-        #     hidden_channels=hidden_dim * num_heads,
-        #     num_layers=num_layers,
-        #     dropout=0,
-        #     heads=hidden_dim,
-        #     residual=True
-        # )
-        
-        # Create an instance of the RGCN model
-        self.gat = RGCN(num_relations=num_edge_types,
-                        hidden_dim=self.hidden_dim,
-                        out_channels=self.out_channels,
-                        num_layers=num_layers,
-                        device=device).to(self.device)
-        
+        self.gat_layers = nn.ModuleList([
+            GATConv(hidden_dim, hidden_dim, heads=num_heads, edge_dim=hidden_dim, concat=False).to(self.device)
+            for _ in range(num_layers)
+        ])
+        self.final_proj = nn.Linear(hidden_dim, out_channels).to(self.device)
+
         # initialize positional encodings
         MAX_NODES = 10000
         self.pe = self.positionalencoding(MAX_NODES).to(self.device)
@@ -88,10 +51,10 @@ class DiffusionOrderingNetwork(nn.Module):
         * lengths: length(s) of graph in the batch
         '''
         l_t = lengths # .max() # use when parallelizing
-        pes = torch.zeros([l_t, self.out_channels], device=self.device)
+        pes = torch.zeros([l_t, self.hidden_dim], device=self.device)
         position = torch.arange(0, l_t, device=self.device).unsqueeze(1) + 1
-        div_term = torch.exp((torch.arange(0, self.out_channels, 2, dtype=torch.float, device=self.device) *
-                              -(math.log(10000.0) / self.out_channels)))
+        div_term = torch.exp((torch.arange(0, self.hidden_dim, 2, dtype=torch.float, device=self.device) *
+                              -(math.log(10000.0) / self.hidden_dim)))
         pes[:,0::2] = torch.sin(position.float() * div_term)
         pes[:,1::2] = torch.cos(position.float() * div_term)
         return pes
@@ -108,7 +71,10 @@ class DiffusionOrderingNetwork(nn.Module):
         # # Positional encoding
         for t in range(len(node_order)):
             h[node_order[t], :] += self.pe[t, :].to(self.device)
-        h = self.gat(h, G.edge_index.long().to(self.device), G.edge_attr.long().to(self.device))
+        edge_attr_emb = self.edge_type_embedding(G.edge_attr.long().to(self.device))
+        for layer in self.gat_layers:
+            h = layer(h, G.edge_index.long().to(self.device), edge_attr=edge_attr_emb)
+        h = self.final_proj(h)
 
         if unmasked.numel() > 0:
             h_unmasked = h[unmasked, :]

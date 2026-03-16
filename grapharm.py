@@ -5,8 +5,8 @@ import wandb
 import torch.nn as nn
 import logging
 
-from .models import DiffusionOrderingNetwork, DenoisingNetwork
-from .utils import NodeMasking
+from models import DiffusionOrderingNetwork, DenoisingNetwork
+from utils import NodeMasking
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -157,6 +157,7 @@ class GraphARM(nn.Module):
         for trajectory, node_order, sigma_t_dist_list in diffusion_trajectories:
             # Compute the reward as the negative denoising loss
             reward = -self.compute_denoising_loss(trajectory, node_order, sigma_t_dist_list)
+            reward = reward.detach()  # reward is a constant for REINFORCE; no gradient flows through it
             wandb.log({"reward": reward.item()})
             # REINFORCE update (policy gradient)
             # Calculate probability of trajectory using sigma_t_dist_list
@@ -176,35 +177,34 @@ class GraphARM(nn.Module):
         self.ordering_optimizer.zero_grad()
 
         # Generate diffusion trajectories for each graph in the batch
-        total_denoising_loss = 0
-        total_ordering_loss = 0
+        total_denoising_loss = 0.0
+        total_ordering_loss = 0.0
 
-        for graph in train_batch:
+        for graph in tqdm(train_batch, desc="Denoising loss"):
             graph = self.preprocess(graph)
             diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
-            
-            # Compute denoising loss
+
+            # Compute denoising loss and backprop immediately to free computation graph
             denoising_loss = sum([self.compute_denoising_loss(traj[0], traj[1], traj[2]) for traj in diffusion_trajectories])
-            total_denoising_loss += denoising_loss
+            denoising_loss.backward()
+            total_denoising_loss += denoising_loss.item()
 
-        # Backpropagation
-        total_denoising_loss.backward()
         self.denoising_optimizer.step()
-        wandb.log({"denoising_loss": total_denoising_loss.item()})
+        wandb.log({"denoising_loss": total_denoising_loss})
 
-        for graph in val_batch:
+        for graph in tqdm(val_batch, desc="Ordering loss"):
             graph = self.preprocess(graph)
             diffusion_trajectories = self.generate_diffusion_trajectories(graph, M)
 
-            # Compute ordering loss for REINFORCE
+            # Compute ordering loss and backprop immediately to free computation graph
             ordering_loss = self.compute_ordering_loss(diffusion_trajectories, M)
-            total_ordering_loss += ordering_loss
+            ordering_loss.backward()
+            total_ordering_loss += ordering_loss.item()
 
-        total_ordering_loss.backward()
         self.ordering_optimizer.step()
-        wandb.log({"ordering_loss": total_ordering_loss.item()})
+        wandb.log({"ordering_loss": total_ordering_loss})
 
-        return total_denoising_loss.item(), total_ordering_loss.item()
+        return total_denoising_loss, total_ordering_loss
 
     def predict_new_node(self, graph, sampling_method="sample", preprocess=True):
         '''
